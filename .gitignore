@@ -1,3 +1,38 @@
 .vscode
 .history
 .claude
+
+# Build directories
+build/
+cmake-build-*/
+
+# Output directories
+output_*/
+analysis_*/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Compiled files
+*.o
+*.so
+*.exe
+*.a
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Executables
+conveyor_inspection
+conveyor_inspection_cli
