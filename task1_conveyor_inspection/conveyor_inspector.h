@@ -17,6 +17,8 @@ using namespace std;
 struct TrackedProduct {
     int id;                // 产品唯一ID
     Point2f centroid;      // 质心坐标
+    Point2f initial_pos;   // 初始位置(用于判断移动方向)
+    int frames_tracked;    // 已追踪帧数
     int frames_lost;       // 丢失帧数计数
     bool counted;          // 是否已统计
 };
