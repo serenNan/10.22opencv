@@ -84,15 +84,21 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
     Mat hsv, mask;
     cvtColor(frame, hsv, COLOR_BGR2HSV);
 
-    // 检测绿色PCB
-    Scalar lower_green(35, 40, 40);
-    Scalar upper_green(85, 255, 255);
-    inRange(hsv, lower_green, upper_green, mask);
+    // 检测白色背景（通用方法，不依赖产品颜色）
+    Scalar lower_white(0, 0, 200);     // H不限，S低（饱和度低），V高（明度高）
+    Scalar upper_white(179, 30, 255);
+    inRange(hsv, lower_white, upper_white, mask);
 
-    // 形态学操作
+    // 反转掩码：白色背景变黑，产品变白
+    bitwise_not(mask, mask);
+
+    // 增强的形态学操作来过滤噪点
     Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
+
+    // 先开运算去除小噪点
+    morphologyEx(mask, mask, MORPH_OPEN, kernel, Point(-1,-1), 2);
+    // 再闭运算填充产品内部空洞
     morphologyEx(mask, mask, MORPH_CLOSE, kernel);
-    morphologyEx(mask, mask, MORPH_OPEN, kernel);
 
     // 查找轮廓
     vector<vector<Point>> contours;
@@ -100,7 +106,7 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
 
     for (const auto& contour : contours) {
         double area = contourArea(contour);
-        if (area < 5000) continue;  // 提高面积阈值过滤小噪声
+        if (area < 5000) continue;  // 过滤小噪声
 
         // 获取最小外接矩形
         RotatedRect rect = minAreaRect(contour);
@@ -127,9 +133,9 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
         float area_ratio = area / rect_area;  // 轮廓面积 / 外接矩形面积
 
         bool is_rectangular = false;
-        if (approx.size() == 4 && area_ratio > 0.85) {
-            // 4顶点 且 填充度>85% → 矩形
-            // (圆形、三角形的填充度会较低)
+        // 使用白色背景检测后，主要依赖填充度判断
+        // 矩形的填充度应该 > 0.78，而非矩形（三角形、圆形、多边形）填充度都 < 0.78
+        if (area_ratio > 0.78) {
             is_rectangular = true;
         }
 

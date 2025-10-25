@@ -14,14 +14,28 @@ find_package(OpenCV REQUIRED)
 # Include directories
 include_directories(${OpenCV_INCLUDE_DIRS})
 
-# Add executable
+# Add main executable
 add_executable(conveyor_inspection_cli
     main.cpp
     conveyor_inspector.cpp
 )
 
+# Add HSV tuner tool
+add_executable(hsv_tuner
+    hsv_tuner.cpp
+)
+
+add_executable(hsv_tuner_headless
+    hsv_tuner_headless.cpp
+)
+
 # Link libraries
 target_link_libraries(conveyor_inspection_cli ${OpenCV_LIBS})
+target_link_libraries(hsv_tuner ${OpenCV_LIBS})
+target_link_libraries(hsv_tuner_headless ${OpenCV_LIBS})
+
+# Print build targets
+message(STATUS "Build targets: conveyor_inspection_cli, hsv_tuner, hsv_tuner_headless")
 
 # Print OpenCV information
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
