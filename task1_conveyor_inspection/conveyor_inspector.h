@@ -60,10 +60,12 @@ private:
     vector<Detection> detectProducts(const Mat& frame);
     void updateCounts(const vector<Detection>& detections,
                      vector<TrackedProduct>& tracked);
+    Mat drawDetections(const Mat& frame, const vector<Detection>& detections,
+                      const vector<TrackedProduct>& tracked);
 
 public:
     ConveyorInspector(bool save_frames = false);
-    void processVideo(const string& video_path);
+    void processVideo(const string& video_path, bool show_video = false);
     void printStatistics(const string& video_path);
 };
 

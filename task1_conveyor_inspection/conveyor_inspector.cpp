@@ -234,7 +234,58 @@ void ConveyorInspector::updateCounts(const vector<Detection>& detections,
     }
 }
 
-void ConveyorInspector::processVideo(const string& video_path) {
+Mat ConveyorInspector::drawDetections(const Mat& frame, const vector<Detection>& detections,
+                                       const vector<TrackedProduct>& tracked) {
+    Mat result;
+    frame.copyTo(result);
+
+    // 绘制计数线
+    line(result, Point(counting_line_x, 0), Point(counting_line_x, frame.rows),
+         Scalar(255, 255, 0), 2);  // 青色计数线(左侧20%)
+    line(result, Point(counting_line_x * 4, 0), Point(counting_line_x * 4, frame.rows),
+         Scalar(255, 255, 0), 2);  // 青色计数线(右侧80%)
+
+    // 绘制每个检测到的产品
+    for (const auto& det : detections) {
+        // 根据类型选择颜色
+        Scalar color = (det.type == "qualified") ? Scalar(0, 255, 0) : Scalar(0, 0, 255);
+
+        // 绘制外接矩形
+        for (int i = 0; i < 4; i++) {
+            line(result, det.box[i], det.box[(i+1)%4], color, 2);
+        }
+
+        // 绘制质心
+        circle(result, det.centroid, 5, color, -1);
+
+        // 显示ID和类型
+        for (const auto& track : tracked) {
+            float dist = norm(det.centroid - track.centroid);
+            if (dist < 50.0f) {
+                string label = format("ID:%d %s", track.id,
+                                    det.type == "qualified" ? "✓" : "✗");
+                putText(result, label, Point(det.centroid.x - 40, det.centroid.y - 15),
+                       FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+                break;
+            }
+        }
+    }
+
+    // 显示统计信息
+    string stats = format("Frame: %d | Qualified: %d | Defective: %d | Total: %d",
+                         frame_count, qualified_count, defective_count,
+                         qualified_count + defective_count);
+
+    // 背景矩形
+    rectangle(result, Point(5, 5), Point(650, 40), Scalar(0, 0, 0), -1);
+    // 白色文字
+    putText(result, stats, Point(10, 28), FONT_HERSHEY_SIMPLEX, 0.7,
+           Scalar(255, 255, 255), 2);
+
+    return result;
+}
+
+void ConveyorInspector::processVideo(const string& video_path, bool show_video) {
     VideoCapture cap(video_path);
     if (!cap.isOpened()) {
         cerr << "错误: 无法打开视频 " << video_path << endl;
@@ -248,6 +299,15 @@ void ConveyorInspector::processVideo(const string& video_path) {
     cout << "Processing: " << video_path << endl;
     cout << "============================================================" << endl;
     cout << endl;
+
+    VideoWriter video_writer;
+    bool use_video_output = false;
+    bool gui_available = show_video;
+
+    if (show_video) {
+        cout << "实时显示模式已启用，按ESC或q退出播放" << endl;
+        cout << "如果窗口无法显示，将自动切换到视频文件输出模式" << endl;
+    }
 
     Mat frame;
     while (cap.read(frame)) {
@@ -267,6 +327,58 @@ void ConveyorInspector::processVideo(const string& video_path) {
 
         // 更新计数
         updateCounts(detections, tracked);
+
+        // 显示或保存视频
+        if (gui_available || use_video_output) {
+            Mat result = drawDetections(frame, detections, tracked);
+
+            if (gui_available && !use_video_output) {
+                try {
+                    imshow("Product Inspection", result);
+                    int key = waitKey(30);  // 30ms延迟，约33fps
+                    if (key == 27 || key == 'q') {  // ESC或q键退出
+                        cout << "\n用户中断播放" << endl;
+                        break;
+                    }
+                } catch (cv::Exception& e) {
+                    // 第一次imshow失败，切换到视频输出
+                    if (gui_available && !use_video_output) {
+                        cerr << "\n警告: GUI窗口显示失败" << endl;
+                        cerr << "错误: " << e.what() << endl;
+                        cerr << "正在切换到视频文件输出模式...\n" << endl;
+
+                        gui_available = false;
+                        use_video_output = true;
+
+                        // 创建输出视频
+                        int fps = static_cast<int>(cap.get(CAP_PROP_FPS));
+                        if (fps <= 0) fps = 30;
+                        Size frame_size(result.cols, result.rows);
+                        string output_path = video_path.substr(0, video_path.find_last_of('.')) + "_result.mp4";
+                        video_writer.open(output_path, VideoWriter::fourcc('m','p','4','v'),
+                                        fps, frame_size);
+
+                        if (video_writer.isOpened()) {
+                            cout << "输出视频: " << output_path << endl;
+                            video_writer.write(result);  // 写入当前帧
+                        }
+                    }
+                }
+            }
+
+            if (use_video_output && video_writer.isOpened()) {
+                video_writer.write(result);
+            }
+        }
+    }
+
+    if (gui_available) {
+        destroyAllWindows();
+    }
+
+    if (use_video_output && video_writer.isOpened()) {
+        video_writer.release();
+        cout << "结果视频已保存" << endl;
     }
 
     cout << endl;
