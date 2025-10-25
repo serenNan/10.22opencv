@@ -1,75 +1,119 @@
 # 计算机视觉项目集合
 
-基于OpenCV的计算机视觉系统，包含产品质量检测和公式识别两个任务。
+基于OpenCV的计算机视觉系统,包含产品质量检测和公式识别两个独立任务。
 
 ## 项目概述
 
-本系统实现了两个计算机视觉任务：
-1. **任务1：流水线产品识别** ✅ - 检测视频中从右向左移动的PCB板，分类为合格品（矩形）或次品（三角形）
-2. **任务2：公式识别** ✅ - 识别图片中的数学公式并计算结果
+本系统实现了两个独立的计算机视觉任务:
+1. **任务1: 流水线产品识别** ✅ - 检测视频中从右向左移动的PCB板,分类为合格品(矩形)或次品(三角形)
+2. **任务2: 公式识别** ✅ - 识别图片中的数学公式并计算结果
 
-## 功能特点
+## 项目结构
 
-- 实时检测和分类PCB产品（合格品/次品）
-- 自动跟踪产品避免重复计数
-- 检测产品的旋转角度和缩放比例
-- 实时输出检测结果
-- 最终统计报告
+```
+.
+├── CMakeLists.txt                           # 根CMake配置(构建所有任务)
+├── task1_conveyor_inspection/               # 任务1: 流水线产品检测
+│   ├── CMakeLists.txt                       # 任务1独立构建配置
+│   ├── conveyor_inspection_cli.cpp          # 源代码
+│   └── video/                               # 测试视频
+│       ├── 1.mp4
+│       └── 2.mp4
+├── task2_formula_recognition/               # 任务2: 公式识别
+│   ├── CMakeLists.txt                       # 任务2独立构建配置
+│   ├── formula_recognition.cpp              # 源代码
+│   └── formula_images/                      # 测试图片
+│       ├── formula_1.png ... formula_6.png
+├── build/                                   # 编译输出目录
+│   ├── task1_conveyor_inspection/
+│   │   └── conveyor_inspection_cli          # 任务1可执行文件
+│   └── task2_formula_recognition/
+│       └── formula_recognition_cli          # 任务2可执行文件
+└── README.md                                # 本文件
+```
 
-## 检测结果
+## 编译方法
 
-### 视频1 (video/1.mp4)
-- 合格品：3个
-- 次品：3个
-- 总计：6个
-
-### 视频2 (video/2.mp4)
-- 合格品：4个
-- 次品：2个
-- 总计：6个
-
-## 使用方法
-
-### 编译
+### 方法1: 一次性构建所有任务(推荐)
 
 ```bash
+# 从项目根目录
 mkdir build
 cd build
 cmake ..
 make
+
+# 两个可执行文件位于:
+# build/task1_conveyor_inspection/conveyor_inspection_cli
+# build/task2_formula_recognition/formula_recognition_cli
 ```
 
-### 任务1: 运行流水线产品检测
+### 方法2: 单独构建某个任务
 
+#### 构建任务1
 ```bash
-# 从build目录运行（基本模式）
-./conveyor_inspection_cli
+cd task1_conveyor_inspection
+mkdir build
+cd build
+cmake ..
+make
 
-# 保存调试帧（会在output_1/和output_2/目录保存带检测标注的图像）
-./conveyor_inspection_cli --save-frames
+# 可执行文件: ./conveyor_inspection_cli
 ```
 
-### 任务2: 运行公式识别
-
+#### 构建任务2
 ```bash
-# 从build目录运行
-./formula_recognition_cli ../formula_images/formula_1.png
+cd task2_formula_recognition
+mkdir build
+cd build
+cmake ..
+make
 
-# 启用调试模式
-./formula_recognition_cli ../formula_images/formula_1.png --debug
+# 可执行文件: ./formula_recognition_cli
 ```
 
-### 依赖
+## 依赖要求
 
 - OpenCV 4.x
 - C++11或更高版本
 - CMake 3.10或更高版本
 
-### 说明
+---
 
-- 命令行版本，无需GUI支持，适合在WSL或服务器环境运行
-- 实时输出中文检测信息到控制台
-- 使用 `--save-frames` 参数会保存带检测标注的图像帧用于调试
+# 任务1: 流水线产品识别
+
+## 功能特点
+
+- 实时检测和分类PCB产品(合格品/次品)
+- 自动跟踪产品避免重复计数
+- 检测产品的旋转角度和缩放比例
+- 实时输出检测结果
+- 最终统计报告
+
+## 使用方法
+
+```bash
+# 从build目录运行
+cd build/task1_conveyor_inspection
+
+# 基本模式
+./conveyor_inspection_cli ../../video/1.mp4
+
+# 保存调试帧
+./conveyor_inspection_cli ../../video/1.mp4 --save-frames
+```
+
+## 检测结果
+
+### 视频1 (video/1.mp4)
+- 合格品: 3个
+- 次品: 3个
+- 总计: 6个
+
+### 视频2 (video/2.mp4)
+- 合格品: 4个
+- 次品: 2个
+- 总计: 6个
 
 ## 技术实现
 
@@ -77,7 +121,7 @@ make
 
 1. **颜色检测**
    - 使用HSV颜色空间检测绿色PCB板
-   - 颜色范围：H(35-85), S(40-255), V(40-255)
+   - 颜色范围: H(35-85), S(40-255), V(40-255)
 
 2. **形状分类**
    - 矩形PCB → 合格品
@@ -87,87 +131,42 @@ make
 3. **产品跟踪**
    - 基于质心的距离跟踪
    - 防止重复计数
-   - 设置计数线（左侧20%位置）
+   - 设置计数线(左侧20%位置)
 
 4. **旋转和缩放检测**
    - 使用minAreaRect获取旋转矩形
    - 计算角度和缩放因子
-   - 参考尺寸：200像素
-
-### 关键参数
-
-- **颜色范围**：绿色HSV值 (35-85, 40-255, 40-255)
-- **最小面积**：1000像素
-- **跟踪距离阈值**：80像素
-- **计数线位置**：画面宽度的20%
-- **匹配距离阈值**：50像素
-
-## 项目结构
-
-```
-.
-├── conveyor_inspection_cli.cpp     # C++ CLI实现（主程序）
-├── CMakeLists.txt                  # CMake构建配置
-├── video/                          # 视频文件目录
-│   ├── 1.mp4
-│   └── 2.mp4
-├── 要求/                           # 项目需求文档
-│   ├── 1.jpg
-│   └── 2.jpg
-├── build/                          # 编译输出目录（由cmake生成）
-│   ├── conveyor_inspection_cli     # CLI可执行文件
-│   ├── output_1/                   # 视频1调试帧输出（--save-frames时生成）
-│   └── output_2/                   # 视频2调试帧输出（--save-frames时生成）
-├── README.md                       # 本文件
-├── CLAUDE.md                       # Claude Code项目说明
-└── .gitignore                      # Git忽略规则
-```
-
-## 扩展功能
-
-已实现的扩展需求：
-- ✅ 处理旋转和缩放变化
-- ✅ 输出旋转角度和缩放倍数
-- ✅ 实时输出检测结果
-- ✅ 快速识别（30fps处理速度）
-- ✅ 支持多种分辨率
-
-## 性能
-
-- 视频1 (852x344): 处理311帧，约10.4秒
-- 视频2 (1216x720): 处理421帧，约14.0秒
-- 实时处理速度：30fps
+   - 参考尺寸: 200像素
 
 ## 输出示例
 
 ```
 ============================================================
-Processing: video/1.mp4
+Processing: ../../video/1.mp4
 ============================================================
 
 Frame 82: DEFECTIVE detected - Angle: 90.0°, Scale: 1.09x | Qualified: 0, Defective: 1
 Frame 99: QUALIFIED detected - Angle: 90.0°, Scale: 1.34x | Qualified: 1, Defective: 1
-Frame 173: QUALIFIED detected - Angle: 90.0°, Scale: 1.29x | Qualified: 2, Defective: 1
 ...
 
 ============================================================
-FINAL STATISTICAL REPORT
+最终统计报告
 ============================================================
-Video: video/1.mp4
+视频: ../../video/1.mp4
 ------------------------------------------------------------
-Qualified Products: 3
-Defective Products: 3
-Total Products:     6
+合格品数量: 3
+次品数量:   3
+总计:       6
 ============================================================
 ```
 
 ---
 
-# 任务2: 公式识别系统
+# 任务2: 公式识别
 
 ## 功能说明
 
-基于OpenCV的数学公式识别系统，可以从图片中识别数学表达式并计算结果。
+基于OpenCV的数学公式识别系统,可以从图片中识别数学表达式并计算结果。
 
 ### 支持的功能
 
@@ -185,19 +184,20 @@ Total Products:     6
 
 ## 使用方法
 
-### 运行公式识别
-
 ```bash
 # 从build目录运行
-./formula_recognition_cli ../formula_images/formula_1.png
+cd build/task2_formula_recognition
 
-# 启用调试模式(会保存二值化图像到debug_binary.png)
-./formula_recognition_cli ../formula_images/formula_1.png --debug
+# 基本模式
+./formula_recognition_cli ../../formula_images/formula_1.png
+
+# 调试模式(显示每个字符的特征值)
+./formula_recognition_cli ../../formula_images/formula_1.png --debug
 ```
 
-### 测试图片
+## 测试图片
 
-项目提供了6张测试图片在 `formula_images/` 目录:
+项目提供了6张测试图片在 `task2_formula_recognition/formula_images/` 目录:
 - formula_1.png: 12+34=46
 - formula_2.png: 56-23=33
 - formula_3.png: 8×9=72
@@ -229,21 +229,6 @@ Total Products:     6
    - 运算符替换
    - 表达式求值
    - 结果验证
-
-### 实现说明
-
-本项目使用C++实现公式识别系统:
-
-| 文件名 | 说明 |
-|--------|------|
-| `formula_recognition.cpp` | C++实现,基于形态学特征识别 |
-| `formula_recognition_cli` | 编译后的可执行文件(在build/目录) |
-
-## 依赖要求
-
-- OpenCV 4.x
-- C++11或更高版本
-- CMake 3.10或更高版本
 
 ## 已知限制
 
@@ -306,25 +291,26 @@ Total Products:     6
 
 注意: 由于采用基于规则的识别方法,识别精度受图像质量和字体影响较大。
 
-## 项目文件结构
-
-```
-.
-├── conveyor_inspection_cli.cpp        # 任务1: 流水线产品检测
-├── formula_recognition.cpp            # 任务2: 公式识别
-├── CMakeLists.txt                     # CMake配置
-├── formula_images/                    # 测试图片目录
-│   ├── formula_1.png ... formula_6.png
-├── video/                             # 任务1测试视频
-│   ├── 1.mp4
-│   └── 2.mp4
-├── build/                             # 编译输出目录
-│   ├── conveyor_inspection_cli        # 任务1可执行文件
-│   └── formula_recognition_cli        # 任务2可执行文件
-└── README.md                          # 本文件
-```
-
 ---
+
+## 快速开始
+
+```bash
+# 1. 克隆或下载项目
+cd /path/to/project
+
+# 2. 创建build目录并编译
+mkdir build && cd build
+cmake .. && make
+
+# 3. 运行任务1
+cd task1_conveyor_inspection
+./conveyor_inspection_cli ../../video/1.mp4
+
+# 4. 运行任务2
+cd ../task2_formula_recognition
+./formula_recognition_cli ../../formula_images/formula_1.png
+```
 
 ## 许可证
 

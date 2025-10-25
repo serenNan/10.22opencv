@@ -1,25 +1,21 @@
 cmake_minimum_required(VERSION 3.10)
-project(ConveyorInspection)
+project(OpenCVProjects)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find OpenCV
-find_package(OpenCV REQUIRED)
+# Export compile commands for IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Include directories
-include_directories(${OpenCV_INCLUDE_DIRS})
+# Add subdirectories
+add_subdirectory(task1_conveyor_inspection)
+add_subdirectory(task2_formula_recognition)
 
-# Add executables (CLI versions)
-add_executable(conveyor_inspection_cli conveyor_inspection_cli.cpp)
-add_executable(formula_recognition_cli formula_recognition.cpp)
-
-# Link libraries
-target_link_libraries(conveyor_inspection_cli ${OpenCV_LIBS})
-target_link_libraries(formula_recognition_cli ${OpenCV_LIBS})
-
-# Print OpenCV information
-message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-message(STATUS "OpenCV include dirs: ${OpenCV_INCLUDE_DIRS}")
-message(STATUS "OpenCV libraries: ${OpenCV_LIBS}")
+# Print project information
+message(STATUS "========================================")
+message(STATUS "  OpenCV Projects - Multi-Task Build")
+message(STATUS "========================================")
+message(STATUS "Task 1: Conveyor Inspection System")
+message(STATUS "Task 2: Formula Recognition System")
+message(STATUS "========================================")

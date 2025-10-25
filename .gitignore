@@ -36,3 +36,4 @@ Makefile
 # Executables
 conveyor_inspection
 conveyor_inspection_cli
+.cache
