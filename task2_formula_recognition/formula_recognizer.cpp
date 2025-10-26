@@ -96,11 +96,18 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
 
     // 运算符和括号识别 - 优先判断,避免与数字混淆
 
+    // 根号识别: 密度很低,中下部较重,顶部轻
+    // 特征: AR:0.6-0.8, D:0.15-0.28, H:0, 中下部明显重于顶部
+    // 与数字5区分: 根号密度更低,顶部更轻
+    if (aspectRatio > 0.6 && aspectRatio < 0.85 && density > 0.15 && density < 0.28 &&
+        numHoles == 0 && h > 35 && topRatio < 0.25 && (midRatio + botRatio) > 0.70) {
+        result = 's';  // 用's'表示sqrt根号
+    }
     // 括号识别: 细长,密度中等,无孔洞
     // 左括号(: aspectRatio小,密度0.45-0.55
     // 右括号): aspectRatio小,密度0.45-0.55
     // 关键: 括号比1粗(density>0.45),比3细(density<0.55)
-    if (aspectRatio < 0.35 && density > 0.45 && density < 0.58 && numHoles == 0 && h > 30) {
+    else if (aspectRatio < 0.35 && density > 0.45 && density < 0.58 && numHoles == 0 && h > 30) {
         // 通过左右像素分布判断是左括号还是右括号
         // 左括号(: 左侧像素多(弯向右侧); 右括号): 右侧像素多(弯向左侧)
         int leftPixels = 0, rightPixels = 0;
@@ -119,12 +126,12 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
             result = ')';
         }
     }
-    // 减号: 单条横线,高度很小,宽度很长
-    else if (h < 8 && aspectRatio > 2.5 && density > 0.8) {
+    // 减号: 单条横线,高度很小,宽度很长,密度高(实心)
+    else if (h <= 10 && aspectRatio > 2.0 && density > 0.8) {
         result = '-';
     }
     // 等号: 两条横线合并后的,或者单条但位置偏下
-    else if (h < 20 && h > 8 && aspectRatio > 1.8 && density > 0.4) {
+    else if (h < 30 && h > 10 && aspectRatio > 1.5 && density > 0.4 && numHoles <= 1) {
         result = '=';
     }
     // 加号: 正方形,密度低(中间有空洞但不算作hole)
@@ -140,17 +147,22 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
     else if (aspectRatio < 0.65 && density < 0.43 && numHoles == 0) {
         result = '1';
     }
+    // 1 (宽一点的字体): 细长,中等密度,无孔洞,中部最轻
+    else if (aspectRatio >= 0.65 && aspectRatio < 0.75 && density >= 0.43 && density < 0.55 &&
+             numHoles == 0 && midRatio < 0.25) {
+        result = '1';
+    }
     // 8: 两个孔洞,密度高 - 必须优先判断,避免被误判为除号
-    else if (numHoles >= 2 && density > 0.55 && aspectRatio > 0.6 && aspectRatio < 0.75 && h >= 25) {
+    else if (numHoles >= 2 && density > 0.55 && aspectRatio > 0.6 && aspectRatio <= 0.85 && h >= 25) {
         result = '8';
     }
     // 除号: 合并后的整体(点-线-点结构),有2个孔(上下点),低密度
     else if (numHoles >= 2 && h > 15 && h < 35 && density < 0.40 && aspectRatio > 0.8 && aspectRatio < 1.6) {
         result = '/';
     }
-    // 4: 一个孔洞,密度较低(4的孔洞比0/6/9小)
-    else if (numHoles >= 1 && density < 0.52) {
-        result = '4';
+    // 0: 一个孔洞,密度中等,上下相对均匀,中部不太重
+    else if (numHoles >= 1 && density > 0.48 && density < 0.60 && midRatio < 0.30) {
+        result = '0';
     }
     // 9: 一个孔洞,底部最轻(9的关键特征: 上重下轻)
     else if (numHoles >= 1 && density > 0.52 && botRatio < 0.32) {
@@ -160,7 +172,11 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
     else if (numHoles >= 1 && density > 0.52 && midRatio >= topRatio) {
         result = '6';
     }
-    // 0: 一个孔洞,其他情况(上下相对均匀)
+    // 4: 一个孔洞,密度较低,中部较重
+    else if (numHoles >= 1 && density < 0.60 && midRatio > 0.28) {
+        result = '4';
+    }
+    // 0 (兜底): 一个孔洞,其他情况
     else if (numHoles >= 1 && density > 0.48) {
         // 精细判断: 如果顶部明显>底部,可能是9
         if (topRatio > botRatio + 0.05 && botRatio < 0.35) {
@@ -282,14 +298,14 @@ vector<RecognizedChar> FormulaRecognizer::detectCharacters(const Mat& binary) {
         }
 
         // 合并等号的两条横线
-        if (box.height < 5 && box.width > box.height * 3) {
+        if (box.height <= 10 && box.width > box.height * 3) {
             if (i + 1 < boxes.size()) {
                 Rect nextBox = boxes[i + 1];
                 int xDiff = abs(box.x - nextBox.x);
                 int yDiff = abs(box.y - nextBox.y);
 
-                if (nextBox.height < 5 && nextBox.width > nextBox.height * 3 &&
-                    xDiff < 10 && yDiff > 3 && yDiff < 15) {
+                if (nextBox.height <= 10 && nextBox.width > nextBox.height * 3 &&
+                    xDiff < 10 && yDiff > 3 && yDiff < 20) {
                     int minX = min(box.x, nextBox.x);
                     int minY = min(box.y, nextBox.y);
                     int maxX = max(box.br().x, nextBox.br().x);
@@ -372,8 +388,20 @@ double FormulaRecognizer::evaluateExpression(const string& expr) {
                 continue;
             }
 
+            // 处理根号 (一元运算符)
+            if (expression[i] == 's') {
+                i++;  // 跳过's'
+                // 读取根号后面的数字
+                double num = 0;
+                while (i < expression.length() && isdigit(expression[i])) {
+                    num = num * 10 + (expression[i] - '0');
+                    i++;
+                }
+                // 计算平方根并压入数字栈
+                numbers.push(sqrt(num));
+            }
             // 处理左括号
-            if (expression[i] == '(') {
+            else if (expression[i] == '(') {
                 operators.push('(');
                 i++;
             }
