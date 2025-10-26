@@ -13,12 +13,18 @@ make
 
 ### 运行
 ```bash
-# 基础用法
+# 基础用法 (自动生成结果图片并显示)
 ./build/formula_recognition_cli formula_images/formula_1.png
+# 输出: formula_images/formula_1_result.png
 
 # 调试模式(显示详细识别过程)
 ./build/formula_recognition_cli formula_images/formula_1.png --debug
+
+# 自定义输出路径
+./build/formula_recognition_cli formula_images/formula_1.png --output custom_result.png
 ```
+
+**注意**: 程序会自动生成带结果的图片，并弹出窗口显示，按任意键关闭窗口。
 
 ## 测试数据集
 
@@ -94,6 +100,7 @@ make
 - ✅ 数字识别 (0-9) - **100%准确率**
 - ✅ **智能公式识别** - 只识别等号前的表达式,自动忽略等号后的答案
 - ✅ **表达式自动计算** - 支持运算符优先级 (根号 > 括号 > 乘除 > 加减)
+- ✅ **结果写入图片** - 可在等号右侧自动添加红色计算结果 (--output参数)
 - ✅ 调试模式支持 (--debug参数)
 
 ### 待优化
@@ -129,8 +136,14 @@ make
 # 运行调试模式
 ./build/formula_recognition_cli formula_images/formula_2.png --debug
 
-# 查看生成的二值化图像
-# 生成文件: build/debug_binary.png
+# 将识别结果写入图片
+./build/formula_recognition_cli formula_images/formula_1.png --output output.png
+
+# 批量处理所有公式
+for i in {1..8}; do
+  ./build/formula_recognition_cli formula_images/formula_$i.png \
+    --output formula_images/formula_${i}_result.png
+done
 ```
 
 ## 项目结构

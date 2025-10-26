@@ -502,10 +502,14 @@ pair<string, double> FormulaRecognizer::recognizeFormula(const Mat& image) {
 
     cout << "检测到 " << chars.size() << " 个字符" << endl;
 
-    // 构建表达式
+    // 构建表达式并保存等号位置
     string expression;
     for (const auto& ch : chars) {
         expression += ch.character;
+        // 保存等号的位置
+        if (ch.character == '=') {
+            equalsSignBox = ch.boundingBox;
+        }
         if (debug) {
             cout << "  字符: " << ch.character
                  << " 位置: (" << ch.boundingBox.x << ", " << ch.boundingBox.y << ")"
@@ -519,4 +523,73 @@ pair<string, double> FormulaRecognizer::recognizeFormula(const Mat& image) {
     double result = evaluateExpression(expression);
 
     return make_pair(expression, result);
+}
+
+void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formula,
+                                          double result, const string& outputPath) {
+    // 复制原图
+    Mat outputImage = image.clone();
+
+    // 如果没有等号位置信息，则在图片右侧写入结果
+    int textX, textY;
+    if (equalsSignBox.width > 0) {
+        // 在等号右侧写入结果
+        textX = equalsSignBox.x + equalsSignBox.width + 10;  // 等号右侧10像素处
+        textY = equalsSignBox.y + equalsSignBox.height;      // 与等号底部对齐
+    } else {
+        // 如果没有等号信息，在图片右侧写入
+        textX = image.cols - 150;
+        textY = image.rows / 2;
+    }
+
+    // 格式化结果文本
+    stringstream ss;
+    // 如果结果是整数，不显示小数部分
+    if (result == floor(result)) {
+        ss << static_cast<int>(result);
+    } else {
+        ss << fixed << setprecision(2) << result;
+    }
+    string resultText = ss.str();
+
+    // 设置文字参数
+    int fontFace = FONT_HERSHEY_SIMPLEX;
+    double fontScale = 1.5;
+    int thickness = 3;
+    Scalar textColor(0, 0, 255);  // 红色文字
+
+    // 获取文字大小
+    int baseline = 0;
+    Size textSize = getTextSize(resultText, fontFace, fontScale, thickness, &baseline);
+
+    // 确保文字不超出图片边界
+    if (textX + textSize.width > image.cols) {
+        textX = image.cols - textSize.width - 10;
+    }
+    if (textY > image.rows) {
+        textY = image.rows - 10;
+    }
+    if (textY - textSize.height < 0) {
+        textY = textSize.height + 10;
+    }
+
+    // 绘制白色背景矩形（可选，让文字更清晰）
+    Point textOrg(textX, textY);
+    rectangle(outputImage,
+              Point(textX - 5, textY - textSize.height - 5),
+              Point(textX + textSize.width + 5, textY + baseline + 5),
+              Scalar(255, 255, 255),
+              FILLED);
+
+    // 在图片上绘制结果文字
+    putText(outputImage, resultText, textOrg, fontFace, fontScale,
+            textColor, thickness, LINE_AA);
+
+    // 保存图片
+    imwrite(outputPath, outputImage);
+
+    if (debug) {
+        cout << "结果已写入图片: " << outputPath << endl;
+        cout << "结果文字: " << resultText << " 位置: (" << textX << ", " << textY << ")" << endl;
+    }
 }

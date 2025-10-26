@@ -28,6 +28,7 @@ struct RecognizedChar {
 class FormulaRecognizer {
 private:
     bool debug;
+    Rect equalsSignBox;  // 保存等号的位置
 
     // 私有方法
     Mat preprocessImage(const Mat& input);
@@ -38,6 +39,10 @@ private:
 public:
     FormulaRecognizer(bool enableDebug = false);
     pair<string, double> recognizeFormula(const Mat& image);
+
+    // 在图片上写入结果并保存
+    void writeResultToImage(const Mat& image, const string& formula, double result,
+                           const string& outputPath);
 };
 
 #endif // FORMULA_RECOGNIZER_H
