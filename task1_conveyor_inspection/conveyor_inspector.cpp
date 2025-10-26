@@ -6,6 +6,8 @@
 #include "conveyor_inspector.h"
 #include <iostream>
 #include <iomanip>
+#include <sstream>
+#include <algorithm>
 #include <cmath>
 
 // ============================================================================
@@ -75,7 +77,36 @@ vector<TrackedProduct>& ProductTracker::update(const vector<Point2f>& centroids)
 ConveyorInspector::ConveyorInspector(bool save_frames)
     : save_frames(save_frames), frame_count(0),
       qualified_count(0), defective_count(0),
-      counting_line_x(0) {}
+      counting_line_x(0), reference_size(0.0f),
+      reference_initialized(false) {}
+
+/**
+ * 计算矩形相对于正置的旋转角度
+ * 正置定义：长边水平且在下方为0°
+ *
+ * minAreaRect返回的角度范围：[-90, 0)
+ * - 当width > height时，angle是长边相对于x轴的角度
+ * - 当width < height时，angle是短边相对于x轴的角度
+ */
+float ConveyorInspector::calculateRectangleAngle(const RotatedRect& rect) {
+    float angle = rect.angle;
+    float width = rect.size.width;
+    float height = rect.size.height;
+
+    // 确保width是长边
+    if (width < height) {
+        swap(width, height);
+        angle += 90.0f;  // 调整角度，使其对应长边
+    }
+
+    // 将角度归一化到 [0, 360)
+    while (angle < 0) angle += 360.0f;
+    while (angle >= 360.0f) angle -= 360.0f;
+
+    // 正置角度为0°（长边水平）
+    // 返回相对于正置的旋转角度
+    return angle;
+}
 
 vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
     vector<Detection> detections;
@@ -113,36 +144,60 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
         Point2f vertices[4];
         rect.points(vertices);
 
-        // 计算轮廓逼近 (使用0.04容差,让圆形等简化为更少顶点)
+        // 计算轮廓逼近 (使用0.03容差,平衡精度和鲁棒性)
         vector<Point> approx;
-        approxPolyDP(contour, approx, arcLength(contour, true) * 0.04, true);
-
-        Detection det;
-        det.centroid = rect.center;
-        det.rect = rect;
-        det.box = vector<Point>(vertices, vertices + 4);
-        det.angle = rect.angle;
-        det.scale = max(rect.size.width, rect.size.height) / REFERENCE_SIZE;
+        approxPolyDP(contour, approx, arcLength(contour, true) * 0.03, true);
 
         // 判断形状: 只有矩形是合格品
         // 严格判断: 4个顶点 + 面积与最小外接矩形面积接近
         float width = rect.size.width;
         float height = rect.size.height;
-        float aspect_ratio = max(width, height) / max(min(width, height), 1.0f);
         float rect_area = width * height;
         float area_ratio = area / rect_area;  // 轮廓面积 / 外接矩形面积
 
         bool is_rectangular = false;
-        // 使用白色背景检测后，主要依赖填充度判断
-        // 矩形的填充度应该 > 0.78，而非矩形（三角形、圆形、多边形）填充度都 < 0.78
-        if (area_ratio > 0.78) {
+        // 矩形必须满足：
+        // 1. 顶点数为4
+        // 2. 填充度 > 0.80（矩形接近1.0，圆形约0.785，三角形约0.5）
+        // 注意：使用0.80而不是0.85，因为旋转的矩形填充度可能略低
+        int vertices_count = approx.size();
+        if (vertices_count == 4 && area_ratio > 0.80) {
             is_rectangular = true;
         }
 
+        Detection det;
+        det.centroid = rect.center;
+        det.rect = rect;
+        det.box = vector<Point>(vertices, vertices + 4);
+
         if (is_rectangular) {
             det.type = "qualified";  // 矩形 = 合格品
+            // 矩形的角度：计算相对于正置（长边水平）的旋转角度
+            det.angle = calculateRectangleAngle(rect);
+
+            // 初始化缩放基准（使用首个合格品的长边尺寸）
+            float current_size = max(width, height);
+            if (!reference_initialized) {
+                reference_size = current_size;
+                reference_initialized = true;
+                cout << "  [缩放基准已设置] 使用首个合格品长边尺寸: " << reference_size << "px" << endl;
+            }
+            det.scale = current_size / reference_size;
         } else {
             det.type = "defective";  // 其他形状(三角形/圆形/多边形) = 次品
+            // 次品的角度：直接使用minAreaRect的角度（同一视频内相对正确即可）
+            det.angle = rect.angle;
+            // 归一化到 [0, 360)
+            while (det.angle < 0) det.angle += 360.0f;
+            while (det.angle >= 360.0f) det.angle -= 360.0f;
+
+            // 次品的缩放：使用最大边长相对于基准（如果基准已初始化）
+            float current_size = max(width, height);
+            if (reference_initialized) {
+                det.scale = current_size / reference_size;
+            } else {
+                det.scale = 1.0f;  // 基准未初始化时暂定为1.0
+            }
         }
 
         // * 调试: 显示详细信息
@@ -164,52 +219,46 @@ void ConveyorInspector::updateCounts(const vector<Detection>& detections,
             continue;
         }
 
-        // 需要追踪至少5帧才能准确判断方向
-        if (track.frames_tracked < 5) {
+        // 需要追踪至少10帧才计数（确保是真实产品，排除噪声）
+        if (track.frames_tracked < 10) {
             continue;
         }
 
-        // 计算移动方向 (当前位置 - 初始位置)
+        // 计算移动方向和距离 (当前位置 - 初始位置)
         float dx = track.centroid.x - track.initial_pos.x;
         float dy = track.centroid.y - track.initial_pos.y;
+        float total_movement = sqrt(dx*dx + dy*dy);
 
-        // 判断主要移动方向和是否应该计数
-        bool should_count = false;
-        string direction = "";
-
-        if (abs(dx) > abs(dy)) {
-            // 水平移动为主
-            if (dx > 20) {
-                // 从左往右: 越过右侧计数线 (80%)
-                direction = "→";
-                should_count = (track.centroid.x > counting_line_x * 4);
-            } else if (dx < -20) {
-                // 从右往左: 越过左侧计数线 (20%)
-                direction = "←";
-                should_count = (track.centroid.x < counting_line_x);
-            }
-        } else {
-            // 垂直移动为主
-            if (dy > 20) {
-                // 从上往下: 越过下方计数线
-                direction = "↓";
-                should_count = (track.centroid.y > 400);
-            } else if (dy < -20) {
-                // 从下往上: 越过上方计数线
-                direction = "↑";
-                should_count = (track.centroid.y < 300);
-            }
-        }
-
-        if (!should_count) {
+        // 必须有足够的移动距离（至少30像素，排除静止的背景）
+        if (total_movement < 30) {
             continue;
         }
+
+        // 判断主要移动方向（仅用于显示）
+        string direction = "";
+        if (abs(dx) > abs(dy)) {
+            direction = (dx > 0) ? "→" : "←";
+        } else {
+            direction = (dy > 0) ? "↓" : "↑";
+        }
+
+        // 满足追踪帧数和移动距离要求，就计数（不再依赖固定计数线）
+        bool should_count = true;
 
         // 找到对应的检测结果
         for (const auto& det : detections) {
             float dist = norm(det.centroid - track.centroid);
             if (dist < 50.0f) {
                 track.counted = true;
+
+                // 记录已统计的产品信息
+                CountedProduct cp;
+                cp.id = track.id;
+                cp.type = det.type;
+                cp.angle = det.angle;
+                cp.scale = det.scale;
+                cp.frame = frame_count;
+                counted_products.push_back(cp);
 
                 if (det.type == "qualified") {
                     qualified_count++;
@@ -258,29 +307,50 @@ Mat ConveyorInspector::drawDetections(const Mat& frame, const vector<Detection>&
         // 绘制质心
         circle(result, det.centroid, 5, color, -1);
 
-        // 显示ID和类型
+        // 显示ID、类型、角度和缩放倍数
         for (const auto& track : tracked) {
             float dist = norm(det.centroid - track.centroid);
             if (dist < 50.0f) {
-                string label = format("ID:%d %s", track.id,
-                                    det.type == "qualified" ? "✓" : "✗");
-                putText(result, label, Point(det.centroid.x - 40, det.centroid.y - 15),
+                // 第1行：ID和类型
+                string label1 = format("ID:%d %s", track.id,
+                                    det.type == "qualified" ? "OK" : "NG");
+                putText(result, label1, Point(det.centroid.x - 50, det.centroid.y - 35),
+                       FONT_HERSHEY_SIMPLEX, 0.6, color, 2);
+
+                // 第2行：旋转角度
+                string label2 = format("Angle:%.1fdeg", det.angle);
+                putText(result, label2, Point(det.centroid.x - 50, det.centroid.y - 12),
+                       FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+
+                // 第3行：缩放倍数
+                string label3 = format("Scale:%.2fx", det.scale);
+                putText(result, label3, Point(det.centroid.x - 50, det.centroid.y + 12),
                        FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
                 break;
             }
         }
     }
 
-    // 显示统计信息
+    // 顶部信息栏背景（加高以容纳更多信息）
+    rectangle(result, Point(0, 0), Point(result.cols, 70), Scalar(0, 0, 0), -1);
+
+    // 第1行：统计信息
     string stats = format("Frame: %d | Qualified: %d | Defective: %d | Total: %d",
                          frame_count, qualified_count, defective_count,
                          qualified_count + defective_count);
-
-    // 背景矩形
-    rectangle(result, Point(5, 5), Point(650, 40), Scalar(0, 0, 0), -1);
-    // 白色文字
-    putText(result, stats, Point(10, 28), FONT_HERSHEY_SIMPLEX, 0.7,
+    putText(result, stats, Point(10, 25), FONT_HERSHEY_SIMPLEX, 0.65,
            Scalar(255, 255, 255), 2);
+
+    // 第2行：缩放基准信息（不显示合格率）
+    if (reference_initialized) {
+        string ref_info = format("Scale Reference: %.1fpx (1st Qualified)", reference_size);
+        putText(result, ref_info, Point(10, 55), FONT_HERSHEY_SIMPLEX, 0.55,
+               Scalar(100, 255, 255), 1);  // 黄色
+    } else {
+        string waiting = "Waiting for first qualified product to set scale reference...";
+        putText(result, waiting, Point(10, 55), FONT_HERSHEY_SIMPLEX, 0.55,
+               Scalar(100, 100, 255), 1);  // 橙色
+    }
 
     return result;
 }
@@ -395,6 +465,48 @@ void ConveyorInspector::printStatistics(const string& video_path) {
     cout << "合格品数量: " << qualified_count << endl;
     cout << "次品数量:   " << defective_count << endl;
     cout << "总计:       " << (qualified_count + defective_count) << endl;
+
+    if (reference_initialized) {
+        float qualified_rate = (qualified_count + defective_count) > 0
+            ? (qualified_count * 100.0f / (qualified_count + defective_count))
+            : 0.0f;
+        cout << "合格率:     " << fixed << setprecision(2) << qualified_rate << "%" << endl;
+        cout << "缩放基准:   " << setprecision(1) << reference_size << "px (首个合格品)" << endl;
+    }
+
+    cout << "============================================================" << endl;
+    cout << endl;
+
+    // 详细产品列表（按ID排序）
+    cout << "详细产品列表（按ID排序）:" << endl;
+    cout << "============================================================" << endl;
+    cout << left << setw(6) << "ID"
+         << setw(12) << "类型"
+         << setw(15) << "旋转角度"
+         << setw(15) << "缩放倍数"
+         << setw(10) << "检测帧" << endl;
+    cout << "------------------------------------------------------------" << endl;
+
+    // 复制并按ID排序
+    vector<CountedProduct> sorted_products = counted_products;
+    sort(sorted_products.begin(), sorted_products.end(),
+         [](const CountedProduct& a, const CountedProduct& b) {
+             return a.id < b.id;
+         });
+
+    for (const auto& prod : sorted_products) {
+        // 格式化角度和缩放
+        stringstream angle_str, scale_str;
+        angle_str << fixed << setprecision(1) << prod.angle << "°";
+        scale_str << fixed << setprecision(2) << prod.scale << "x";
+
+        cout << left << setw(6) << prod.id
+             << setw(12) << (prod.type == "qualified" ? "✓ 合格品" : "✗ 次品")
+             << setw(15) << angle_str.str()
+             << setw(15) << scale_str.str()
+             << setw(10) << prod.frame << endl;
+    }
+
     cout << "============================================================" << endl;
     cout << endl;
 }

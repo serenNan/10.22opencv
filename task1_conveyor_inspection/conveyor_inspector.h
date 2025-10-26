@@ -33,6 +33,15 @@ struct Detection {
     vector<Point> box;     // 边界框顶点
 };
 
+// 已统计产品记录
+struct CountedProduct {
+    int id;                // 产品ID
+    string type;           // 类型
+    float angle;           // 旋转角度
+    float scale;           // 缩放倍数
+    int frame;             // 统计时的帧号
+};
+
 // 产品追踪器类
 class ProductTracker {
 private:
@@ -54,7 +63,9 @@ private:
     int defective_count;
     ProductTracker tracker;
     int counting_line_x;
-    const float REFERENCE_SIZE = 200.0f;
+    float reference_size;  // 缩放基准尺寸（使用首个合格品）
+    bool reference_initialized;  // 是否已初始化基准
+    vector<CountedProduct> counted_products;  // 已统计产品列表
 
     // 私有方法
     vector<Detection> detectProducts(const Mat& frame);
@@ -62,6 +73,7 @@ private:
                      vector<TrackedProduct>& tracked);
     Mat drawDetections(const Mat& frame, const vector<Detection>& detections,
                       const vector<TrackedProduct>& tracked);
+    float calculateRectangleAngle(const RotatedRect& rect);  // 计算矩形正置角度
 
 public:
     ConveyorInspector(bool save_frames = false);
