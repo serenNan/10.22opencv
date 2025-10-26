@@ -593,3 +593,204 @@ void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formu
         cout << "结果文字: " << resultText << " 位置: (" << textX << ", " << textY << ")" << endl;
     }
 }
+
+// 检测多个公式行
+vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
+    vector<Rect> rowRects;
+
+    // 计算水平投影（每一行的像素和）
+    vector<int> horizontalProjection(binary.rows, 0);
+    for (int y = 0; y < binary.rows; y++) {
+        for (int x = 0; x < binary.cols; x++) {
+            if (binary.at<uchar>(y, x) == 255) {
+                horizontalProjection[y]++;
+            }
+        }
+    }
+
+    if (debug) {
+        cout << "  [调试] 水平投影计算完成" << endl;
+    }
+
+    // 找到公式行：连续的非零投影区域
+    bool inFormula = false;
+    int startY = 0;
+
+    for (int y = 0; y < binary.rows; y++) {
+        // 如果当前行有像素（公式行）
+        if (horizontalProjection[y] > 0) {
+            if (!inFormula) {
+                // 公式行开始
+                startY = y;
+                inFormula = true;
+            }
+        } else {
+            // 空行
+            if (inFormula) {
+                // 公式行结束
+                int endY = y - 1;
+                // 只有当公式行高度足够时才认为是有效的公式
+                if (endY - startY > 10) {
+                    rowRects.push_back(Rect(0, startY, binary.cols, endY - startY + 1));
+                    if (debug) {
+                        cout << "  [调试] 检测到公式行: y=" << startY << " 到 " << endY
+                             << " 高度=" << (endY - startY + 1) << endl;
+                    }
+                }
+                inFormula = false;
+            }
+        }
+    }
+
+    // 处理到达图片底部的情况
+    if (inFormula) {
+        int endY = binary.rows - 1;
+        if (endY - startY > 10) {
+            rowRects.push_back(Rect(0, startY, binary.cols, endY - startY + 1));
+            if (debug) {
+                cout << "  [调试] 检测到公式行(底部): y=" << startY << " 到 " << endY
+                     << " 高度=" << (endY - startY + 1) << endl;
+            }
+        }
+    }
+
+    if (debug) {
+        cout << "  [调试] 总共检测到 " << rowRects.size() << " 个公式行" << endl;
+    }
+
+    return rowRects;
+}
+
+// 识别多个公式
+vector<FormulaResult> FormulaRecognizer::recognizeMultipleFormulas(const Mat& image) {
+    vector<FormulaResult> results;
+
+    cout << "开始多公式识别..." << endl;
+
+    // 预处理图像
+    Mat binary = preprocessImage(image);
+
+    // 检测公式行
+    vector<Rect> formulaRows = detectFormulaRows(binary);
+
+    if (formulaRows.empty()) {
+        cout << "警告: 未检测到任何公式行!" << endl;
+        return results;
+    }
+
+    cout << "检测到 " << formulaRows.size() << " 个公式行" << endl;
+
+    // 对每一行分别识别
+    for (size_t i = 0; i < formulaRows.size(); i++) {
+        cout << "\n--- 识别第 " << (i + 1) << " 个公式 ---" << endl;
+
+        Rect row = formulaRows[i];
+
+        // 裁剪对应行的原图(而不是binary)进行识别
+        Mat rowImage = image(row);
+
+        // 对这一行使用完整的识别流程
+        auto result_pair = recognizeFormula(rowImage);
+        string expression = result_pair.first;
+        double result = result_pair.second;
+
+        cout << "识别的字符序列: " << expression << endl;
+        cout << "计算结果: " << result << endl;
+
+        // 检测字符以获取等号位置
+        Mat rowBinary = preprocessImage(rowImage);
+        vector<RecognizedChar> chars = detectCharacters(rowBinary);
+
+        // 找到等号位置
+        Rect localEqualsBox;
+        for (const auto& ch : chars) {
+            if (ch.character == '=') {
+                localEqualsBox = ch.boundingBox;
+                break;
+            }
+        }
+
+        // 保存结果（将等号位置转换为相对于原图的坐标）
+        FormulaResult formulaResult;
+        formulaResult.expression = expression;
+        formulaResult.result = result;
+        formulaResult.boundingBox = row;
+        formulaResult.equalsSignBox = Rect(
+            localEqualsBox.x + row.x,
+            localEqualsBox.y + row.y,
+            localEqualsBox.width,
+            localEqualsBox.height
+        );
+
+        results.push_back(formulaResult);
+    }
+
+    return results;
+}
+
+// 将多个公式的结果写入图片
+void FormulaRecognizer::writeMultipleResultsToImage(const Mat& image,
+                                                   const vector<FormulaResult>& results,
+                                                   const string& outputPath) {
+    // 复制原图
+    Mat outputImage = image.clone();
+
+    // 设置文字参数
+    int fontFace = FONT_HERSHEY_SIMPLEX;
+    double fontScale = 1.5;
+    int thickness = 3;
+    Scalar textColor(0, 0, 255);  // 红色文字
+
+    // 对每个公式写入结果
+    for (const auto& formulaResult : results) {
+        // 格式化结果文本
+        stringstream ss;
+        if (formulaResult.result == floor(formulaResult.result)) {
+            ss << static_cast<int>(formulaResult.result);
+        } else {
+            ss << fixed << setprecision(2) << formulaResult.result;
+        }
+        string resultText = ss.str();
+
+        // 计算文字位置（等号右侧）
+        int textX = formulaResult.equalsSignBox.x + formulaResult.equalsSignBox.width + 10;
+        int textY = formulaResult.equalsSignBox.y + formulaResult.equalsSignBox.height;
+
+        // 获取文字大小
+        int baseline = 0;
+        Size textSize = getTextSize(resultText, fontFace, fontScale, thickness, &baseline);
+
+        // 确保文字不超出图片边界
+        if (textX + textSize.width > image.cols) {
+            textX = image.cols - textSize.width - 10;
+        }
+        if (textY > image.rows) {
+            textY = image.rows - 10;
+        }
+        if (textY - textSize.height < 0) {
+            textY = textSize.height + 10;
+        }
+
+        // 绘制白色背景矩形
+        Point textOrg(textX, textY);
+        rectangle(outputImage,
+                  Point(textX - 5, textY - textSize.height - 5),
+                  Point(textX + textSize.width + 5, textY + baseline + 5),
+                  Scalar(255, 255, 255),
+                  FILLED);
+
+        // 在图片上绘制结果文字
+        putText(outputImage, resultText, textOrg, fontFace, fontScale,
+                textColor, thickness, LINE_AA);
+
+        if (debug) {
+            cout << "公式 \"" << formulaResult.expression << "\" 结果: " << resultText
+                 << " 位置: (" << textX << ", " << textY << ")" << endl;
+        }
+    }
+
+    // 保存图片
+    imwrite(outputPath, outputImage);
+
+    cout << "所有结果已写入图片: " << outputPath << endl;
+}

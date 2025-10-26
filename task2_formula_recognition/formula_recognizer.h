@@ -24,6 +24,15 @@ struct RecognizedChar {
     bool operator<(const RecognizedChar& other) const;
 };
 
+// 单个公式结果结构体
+struct FormulaResult {
+    string expression;      // 识别的公式表达式
+    double result;          // 计算结果
+    Rect boundingBox;       // 公式在图片中的位置
+    Rect equalsSignBox;     // 等号的位置
+};
+
+
 // 公式识别器类
 class FormulaRecognizer {
 private:
@@ -35,14 +44,18 @@ private:
     char recognizeCharacter(const Mat& roi, const Rect& box);
     vector<RecognizedChar> detectCharacters(const Mat& binary);
     double evaluateExpression(const string& expr);
+    vector<Rect> detectFormulaRows(const Mat& binary);
 
 public:
     FormulaRecognizer(bool enableDebug = false);
     pair<string, double> recognizeFormula(const Mat& image);
+    vector<FormulaResult> recognizeMultipleFormulas(const Mat& image);
 
     // 在图片上写入结果并保存
     void writeResultToImage(const Mat& image, const string& formula, double result,
                            const string& outputPath);
+    void writeMultipleResultsToImage(const Mat& image, const vector<FormulaResult>& results,
+                                    const string& outputPath);
 };
 
 #endif // FORMULA_RECOGNIZER_H
