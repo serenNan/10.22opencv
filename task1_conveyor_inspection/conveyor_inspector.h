@@ -61,7 +61,6 @@ private:
     int qualified_count;
     int defective_count;
     ProductTracker tracker;
-    int counting_line_x;
     float reference_size;  // 缩放基准尺寸（使用首个合格品）
     bool reference_initialized;  // 是否已初始化基准
     vector<CountedProduct> counted_products;  // 已统计产品列表

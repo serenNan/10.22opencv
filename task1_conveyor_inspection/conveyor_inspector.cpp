@@ -76,8 +76,7 @@ vector<TrackedProduct>& ProductTracker::update(const vector<Point2f>& centroids)
 
 ConveyorInspector::ConveyorInspector()
     : frame_count(0), qualified_count(0), defective_count(0),
-      counting_line_x(0), reference_size(0.0f),
-      reference_initialized(false) {}
+      reference_size(0.0f), reference_initialized(false) {}
 
 /**
  * 计算矩形相对于正置的旋转角度
@@ -281,12 +280,6 @@ Mat ConveyorInspector::drawDetections(const Mat& frame, const vector<Detection>&
     Mat result;
     frame.copyTo(result);
 
-    // 绘制计数线
-    line(result, Point(counting_line_x, 0), Point(counting_line_x, frame.rows),
-         Scalar(255, 255, 0), 2);  // 青色计数线(左侧20%)
-    line(result, Point(counting_line_x * 4, 0), Point(counting_line_x * 4, frame.rows),
-         Scalar(255, 255, 0), 2);  // 青色计数线(右侧80%)
-
     // 绘制每个检测到的产品
     for (const auto& det : detections) {
         // 根据类型选择颜色
@@ -304,20 +297,32 @@ Mat ConveyorInspector::drawDetections(const Mat& frame, const vector<Detection>&
         for (const auto& track : tracked) {
             float dist = norm(det.centroid - track.centroid);
             if (dist < 50.0f) {
+                // 找到边界框的最低点（最大y坐标）
+                float max_y = det.box[0].y;
+                for (int i = 1; i < 4; i++) {
+                    if (det.box[i].y > max_y) {
+                        max_y = det.box[i].y;
+                    }
+                }
+
+                // 在物体下方显示信息（从最低点下方15像素开始）
+                int base_y = static_cast<int>(max_y) + 15;
+                int text_x = static_cast<int>(det.centroid.x) - 50;
+
                 // 第1行：ID和类型
                 string label1 = format("ID:%d %s", track.id,
-                                    det.type == "qualified" ? "OK" : "NG");
-                putText(result, label1, Point(det.centroid.x - 50, det.centroid.y - 35),
+                                    det.type == "qualified" ? "YES" : "NO");
+                putText(result, label1, Point(text_x, base_y + 20),
                        FONT_HERSHEY_SIMPLEX, 0.6, color, 2);
 
                 // 第2行：旋转角度
                 string label2 = format("Angle:%.1fdeg", det.angle);
-                putText(result, label2, Point(det.centroid.x - 50, det.centroid.y - 12),
+                putText(result, label2, Point(text_x, base_y + 40),
                        FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
 
                 // 第3行：缩放倍数
                 string label3 = format("Scale:%.2fx", det.scale);
-                putText(result, label3, Point(det.centroid.x - 50, det.centroid.y + 12),
+                putText(result, label3, Point(text_x, base_y + 60),
                        FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
                 break;
             }
@@ -355,9 +360,6 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
         return;
     }
 
-    int frame_width = static_cast<int>(cap.get(CAP_PROP_FRAME_WIDTH));
-    counting_line_x = frame_width * 0.2;  // 计数线位置
-
     cout << "============================================================" << endl;
     cout << "Processing: " << video_path << endl;
     cout << "============================================================" << endl;
@@ -368,7 +370,8 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
     bool gui_available = show_video;
 
     if (show_video) {
-        cout << "实时显示模式已启用，按ESC或q退出播放" << endl;
+        cout << "实时显示模式已启用" << endl;
+        cout << "播放控制: ESC/q-退出, 空格-暂停/继续" << endl;
         cout << "如果窗口无法显示，将自动切换到视频文件输出模式" << endl;
     }
 
@@ -399,9 +402,25 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
                 try {
                     imshow("Product Inspection", result);
                     int key = waitKey(30);  // 30ms延迟，约33fps
+
                     if (key == 27 || key == 'q') {  // ESC或q键退出
                         cout << "\n用户中断播放" << endl;
                         break;
+                    } else if (key == 32 || key == ' ') {  // 空格键暂停
+                        cout << "\n▌▌ 已暂停 (按空格继续, ESC/q退出)" << endl;
+
+                        // 暂停循环：持续显示当前帧直到按下空格或退出
+                        while (true) {
+                            int pause_key = waitKey(0);  // 无限等待按键
+
+                            if (pause_key == 32 || pause_key == ' ') {  // 空格键继续
+                                cout << "▶ 继续播放" << endl;
+                                break;
+                            } else if (pause_key == 27 || pause_key == 'q') {  // ESC或q退出
+                                cout << "\n用户中断播放" << endl;
+                                goto end_video;  // 跳出外层循环
+                            }
+                        }
                     }
                 } catch (cv::Exception& e) {
                     // 第一次imshow失败，切换到视频输出
@@ -434,6 +453,8 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
             }
         }
     }
+
+end_video:  // goto标签，用于从暂停状态退出
 
     if (gui_available) {
         destroyAllWindows();

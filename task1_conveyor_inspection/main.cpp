@@ -22,6 +22,7 @@ void printUsage(const char* program_name) {
     cout << endl;
     cout << "播放控制:" << endl;
     cout << "  ESC 或 q - 退出播放" << endl;
+    cout << "  空格键   - 暂停/继续播放" << endl;
     cout << endl;
 }
 
