@@ -21,8 +21,9 @@ void printUsage(const char* program_name) {
     cout << "  " << program_name << " video/1.mp4 --no-show          # 仅统计" << endl;
     cout << endl;
     cout << "播放控制:" << endl;
-    cout << "  ESC 或 q - 退出播放" << endl;
-    cout << "  空格键   - 暂停/继续播放" << endl;
+    cout << "  ESC 或 q   - 退出播放" << endl;
+    cout << "  空格键     - 暂停/继续播放" << endl;
+    cout << "  右方向键   - 加速/恢复正常播放" << endl;
     cout << endl;
 }
 

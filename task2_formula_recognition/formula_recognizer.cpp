@@ -31,17 +31,14 @@ FormulaRecognizer::FormulaRecognizer() {}
 Mat FormulaRecognizer::preprocessImage(const Mat& input) {
     Mat gray, binary;
 
-    // 转换为灰度图
     if (input.channels() == 3) {
         cvtColor(input, gray, COLOR_BGR2GRAY);
     } else {
         gray = input.clone();
     }
 
-    // 使用Otsu阈值二值化
     threshold(gray, binary, 0, 255, THRESH_BINARY_INV | THRESH_OTSU);
 
-    // 去噪
     Mat kernel = getStructuringElement(MORPH_RECT, Size(2, 2));
     morphologyEx(binary, binary, MORPH_CLOSE, kernel);
 
@@ -54,21 +51,17 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
 
     if (h == 0 || w == 0) return '?';
 
-    // 归一化大小
     Mat resized;
     resize(roi, resized, Size(28, 40));
 
-    // 计算特征
     int pixelCount = countNonZero(resized);
     float density = (float)pixelCount / (resized.rows * resized.cols);
     float aspectRatio = (float)w / h;
 
-    // 查找轮廓
     vector<vector<Point>> contours;
     findContours(resized.clone(), contours, RETR_LIST, CHAIN_APPROX_SIMPLE);
     int numHoles = max(0, (int)contours.size() - 1);
 
-    // 计算上中下三部分的像素分布
     int h1 = resized.rows / 3;
     int h2 = resized.rows * 2 / 3;
 
@@ -212,11 +205,9 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
 vector<RecognizedChar> FormulaRecognizer::detectCharacters(const Mat& binary) {
     vector<RecognizedChar> characters;
 
-    // 查找轮廓
     vector<vector<Point>> contours;
     findContours(binary.clone(), contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
-    // 获取边界框
     vector<Rect> boxes;
     for (const auto& contour : contours) {
         Rect box = boundingRect(contour);
@@ -226,7 +217,6 @@ vector<RecognizedChar> FormulaRecognizer::detectCharacters(const Mat& binary) {
         boxes.push_back(box);
     }
 
-    // 按x坐标排序
     sort(boxes.begin(), boxes.end(),
          [](const Rect& a, const Rect& b) { return a.x < b.x; });
 
@@ -323,12 +313,10 @@ vector<RecognizedChar> FormulaRecognizer::detectCharacters(const Mat& binary) {
 double FormulaRecognizer::evaluateExpression(const string& expr) {
     string expression = expr;
 
-    // 移除末尾的等号(如果有)
     if (!expression.empty() && expression.back() == '=') {
         expression.pop_back();
     }
 
-    // 替换运算符 (x→*, /保持不变)
     for (size_t i = 0; i < expression.length(); i++) {
         if (expression[i] == 'x') expression[i] = '*';
     }
@@ -359,32 +347,25 @@ double FormulaRecognizer::evaluateExpression(const string& expr) {
 
         size_t i = 0;
         while (i < expression.length()) {
-            // 跳过空格
             if (expression[i] == ' ') {
                 i++;
                 continue;
             }
 
-            // 处理根号 (一元运算符)
             if (expression[i] == 's') {
-                i++;  // 跳过's'
-                // 读取根号后面的数字
+                i++;
                 double num = 0;
                 while (i < expression.length() && isdigit(expression[i])) {
                     num = num * 10 + (expression[i] - '0');
                     i++;
                 }
-                // 计算平方根并压入数字栈
                 numbers.push(sqrt(num));
             }
-            // 处理左括号
             else if (expression[i] == '(') {
                 operators.push('(');
                 i++;
             }
-            // 处理右括号
             else if (expression[i] == ')') {
-                // 弹出运算符直到遇到左括号
                 while (!operators.empty() && operators.top() != '(') {
                     if (numbers.size() < 2) return 0.0;
 
@@ -397,13 +378,11 @@ double FormulaRecognizer::evaluateExpression(const string& expr) {
                     numbers.push(applyOp(a, b, op));
                 }
 
-                // 弹出左括号
                 if (!operators.empty() && operators.top() == '(') {
                     operators.pop();
                 }
                 i++;
             }
-            // 处理数字
             else if (isdigit(expression[i])) {
                 double num = 0;
                 while (i < expression.length() && isdigit(expression[i])) {
@@ -412,12 +391,10 @@ double FormulaRecognizer::evaluateExpression(const string& expr) {
                 }
                 numbers.push(num);
             }
-            // 处理运算符
             else if (expression[i] == '+' || expression[i] == '-' ||
                      expression[i] == '*' || expression[i] == '/') {
                 char op = expression[i];
 
-                // 处理运算符优先级
                 while (!operators.empty() && operators.top() != '(' &&
                        precedence(operators.top()) >= precedence(op)) {
                     if (numbers.size() < 2) return 0.0;
@@ -435,11 +412,10 @@ double FormulaRecognizer::evaluateExpression(const string& expr) {
                 i++;
             }
             else {
-                i++;  // 跳过未知字符
+                i++;
             }
         }
 
-        // 处理剩余的运算符
         while (!operators.empty()) {
             if (numbers.size() < 2) return 0.0;
 
@@ -479,11 +455,9 @@ pair<string, double> FormulaRecognizer::recognizeFormula(const Mat& image) {
 
     cout << "检测到 " << chars.size() << " 个字符" << endl;
 
-    // 构建表达式并保存等号位置
     string expression;
     for (const auto& ch : chars) {
         expression += ch.character;
-        // 保存等号的位置
         if (ch.character == '=') {
             equalsSignBox = ch.boundingBox;
         }
@@ -498,24 +472,18 @@ pair<string, double> FormulaRecognizer::recognizeFormula(const Mat& image) {
 
 void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formula,
                                           double result, const string& outputPath) {
-    // 复制原图
     Mat outputImage = image.clone();
 
-    // 如果没有等号位置信息，则在图片右侧写入结果
     int textX, textY;
     if (equalsSignBox.width > 0) {
-        // 在等号右侧写入结果
-        textX = equalsSignBox.x + equalsSignBox.width + 10;  // 等号右侧10像素处
-        textY = equalsSignBox.y + equalsSignBox.height;      // 与等号底部对齐
+        textX = equalsSignBox.x + equalsSignBox.width + 10;
+        textY = equalsSignBox.y + equalsSignBox.height;
     } else {
-        // 如果没有等号信息，在图片右侧写入
         textX = image.cols - 150;
         textY = image.rows / 2;
     }
 
-    // 格式化结果文本
     stringstream ss;
-    // 如果结果是整数，不显示小数部分
     if (result == floor(result)) {
         ss << static_cast<int>(result);
     } else {
@@ -523,17 +491,14 @@ void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formu
     }
     string resultText = ss.str();
 
-    // 设置文字参数
     int fontFace = FONT_HERSHEY_SIMPLEX;
     double fontScale = 1.5;
     int thickness = 3;
-    Scalar textColor(0, 0, 255);  // 红色文字
+    Scalar textColor(0, 0, 255);
 
-    // 获取文字大小
     int baseline = 0;
     Size textSize = getTextSize(resultText, fontFace, fontScale, thickness, &baseline);
 
-    // 确保文字不超出图片边界
     if (textX + textSize.width > image.cols) {
         textX = image.cols - textSize.width - 10;
     }
@@ -544,7 +509,6 @@ void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formu
         textY = textSize.height + 10;
     }
 
-    // 绘制白色背景矩形（可选，让文字更清晰）
     Point textOrg(textX, textY);
     rectangle(outputImage,
               Point(textX - 5, textY - textSize.height - 5),
@@ -552,11 +516,9 @@ void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formu
               Scalar(255, 255, 255),
               FILLED);
 
-    // 在图片上绘制结果文字
     putText(outputImage, resultText, textOrg, fontFace, fontScale,
             textColor, thickness, LINE_AA);
 
-    // 保存图片
     imwrite(outputPath, outputImage);
 }
 
@@ -564,7 +526,6 @@ void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formu
 vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
     vector<Rect> rowRects;
 
-    // 计算水平投影（每一行的像素和）
     vector<int> horizontalProjection(binary.rows, 0);
     for (int y = 0; y < binary.rows; y++) {
         for (int x = 0; x < binary.cols; x++) {
@@ -574,24 +535,18 @@ vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
         }
     }
 
-    // 找到公式行：连续的非零投影区域
     bool inFormula = false;
     int startY = 0;
 
     for (int y = 0; y < binary.rows; y++) {
-        // 如果当前行有像素（公式行）
         if (horizontalProjection[y] > 0) {
             if (!inFormula) {
-                // 公式行开始
                 startY = y;
                 inFormula = true;
             }
         } else {
-            // 空行
             if (inFormula) {
-                // 公式行结束
                 int endY = y - 1;
-                // 只有当公式行高度足够时才认为是有效的公式
                 if (endY - startY > 10) {
                     rowRects.push_back(Rect(0, startY, binary.cols, endY - startY + 1));
                 }
@@ -600,7 +555,6 @@ vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
         }
     }
 
-    // 处理到达图片底部的情况
     if (inFormula) {
         int endY = binary.rows - 1;
         if (endY - startY > 10) {
@@ -611,16 +565,13 @@ vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
     return rowRects;
 }
 
-// 识别多个公式
 vector<FormulaResult> FormulaRecognizer::recognizeMultipleFormulas(const Mat& image) {
     vector<FormulaResult> results;
 
     cout << "开始多公式识别..." << endl;
 
-    // 预处理图像
     Mat binary = preprocessImage(image);
 
-    // 检测公式行
     vector<Rect> formulaRows = detectFormulaRows(binary);
 
     if (formulaRows.empty()) {
@@ -630,16 +581,13 @@ vector<FormulaResult> FormulaRecognizer::recognizeMultipleFormulas(const Mat& im
 
     cout << "检测到 " << formulaRows.size() << " 个公式行" << endl;
 
-    // 对每一行分别识别
     for (size_t i = 0; i < formulaRows.size(); i++) {
         cout << "\n--- 识别第 " << (i + 1) << " 个公式 ---" << endl;
 
         Rect row = formulaRows[i];
 
-        // 裁剪对应行的原图(而不是binary)进行识别
         Mat rowImage = image(row);
 
-        // 对这一行使用完整的识别流程
         auto result_pair = recognizeFormula(rowImage);
         string expression = result_pair.first;
         double result = result_pair.second;
@@ -647,11 +595,9 @@ vector<FormulaResult> FormulaRecognizer::recognizeMultipleFormulas(const Mat& im
         cout << "识别的字符序列: " << expression << endl;
         cout << "计算结果: " << result << endl;
 
-        // 检测字符以获取等号位置
         Mat rowBinary = preprocessImage(rowImage);
         vector<RecognizedChar> chars = detectCharacters(rowBinary);
 
-        // 找到等号位置
         Rect localEqualsBox;
         for (const auto& ch : chars) {
             if (ch.character == '=') {
@@ -660,7 +606,6 @@ vector<FormulaResult> FormulaRecognizer::recognizeMultipleFormulas(const Mat& im
             }
         }
 
-        // 保存结果（将等号位置转换为相对于原图的坐标）
         FormulaResult formulaResult;
         formulaResult.expression = expression;
         formulaResult.result = result;
@@ -678,22 +623,17 @@ vector<FormulaResult> FormulaRecognizer::recognizeMultipleFormulas(const Mat& im
     return results;
 }
 
-// 将多个公式的结果写入图片
 void FormulaRecognizer::writeMultipleResultsToImage(const Mat& image,
                                                    const vector<FormulaResult>& results,
                                                    const string& outputPath) {
-    // 复制原图
     Mat outputImage = image.clone();
 
-    // 设置文字参数
     int fontFace = FONT_HERSHEY_SIMPLEX;
     double fontScale = 1.5;
     int thickness = 3;
-    Scalar textColor(0, 0, 255);  // 红色文字
+    Scalar textColor(0, 0, 255);
 
-    // 对每个公式写入结果
     for (const auto& formulaResult : results) {
-        // 格式化结果文本
         stringstream ss;
         if (formulaResult.result == floor(formulaResult.result)) {
             ss << static_cast<int>(formulaResult.result);
@@ -702,15 +642,12 @@ void FormulaRecognizer::writeMultipleResultsToImage(const Mat& image,
         }
         string resultText = ss.str();
 
-        // 计算文字位置（等号右侧）
         int textX = formulaResult.equalsSignBox.x + formulaResult.equalsSignBox.width + 10;
         int textY = formulaResult.equalsSignBox.y + formulaResult.equalsSignBox.height;
 
-        // 获取文字大小
         int baseline = 0;
         Size textSize = getTextSize(resultText, fontFace, fontScale, thickness, &baseline);
 
-        // 确保文字不超出图片边界
         if (textX + textSize.width > image.cols) {
             textX = image.cols - textSize.width - 10;
         }
@@ -721,7 +658,6 @@ void FormulaRecognizer::writeMultipleResultsToImage(const Mat& image,
             textY = textSize.height + 10;
         }
 
-        // 绘制白色背景矩形
         Point textOrg(textX, textY);
         rectangle(outputImage,
                   Point(textX - 5, textY - textSize.height - 5),
@@ -729,12 +665,10 @@ void FormulaRecognizer::writeMultipleResultsToImage(const Mat& image,
                   Scalar(255, 255, 255),
                   FILLED);
 
-        // 在图片上绘制结果文字
         putText(outputImage, resultText, textOrg, fontFace, fontScale,
                 textColor, thickness, LINE_AA);
     }
 
-    // 保存图片
     imwrite(outputPath, outputImage);
 
     cout << "所有结果已写入图片: " << outputPath << endl;

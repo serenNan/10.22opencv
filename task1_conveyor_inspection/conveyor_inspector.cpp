@@ -78,55 +78,38 @@ ConveyorInspector::ConveyorInspector()
     : frame_count(0), qualified_count(0), defective_count(0),
       reference_size(0.0f), reference_initialized(false) {}
 
-/**
- * 计算矩形相对于正置的旋转角度
- * 正置定义：长边水平且在下方为0°
- *
- * minAreaRect返回的角度范围：[-90, 0)
- * - 当width > height时，angle是长边相对于x轴的角度
- * - 当width < height时，angle是短边相对于x轴的角度
- */
+// 计算矩形旋转角度(正置=长边水平为0°)
 float ConveyorInspector::calculateRectangleAngle(const RotatedRect& rect) {
     float angle = rect.angle;
     float width = rect.size.width;
     float height = rect.size.height;
 
-    // 确保width是长边
     if (width < height) {
         swap(width, height);
-        angle += 90.0f;  // 调整角度，使其对应长边
+        angle += 90.0f;
     }
 
-    // 将角度归一化到 [0, 360)
     while (angle < 0) angle += 360.0f;
     while (angle >= 360.0f) angle -= 360.0f;
 
-    // 正置角度为0°（长边水平）
-    // 返回相对于正置的旋转角度
     return angle;
 }
 
 vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
     vector<Detection> detections;
 
-    // 转换到HSV色彩空间
     Mat hsv, mask;
     cvtColor(frame, hsv, COLOR_BGR2HSV);
 
-    // 检测白色背景（通用方法，不依赖产品颜色）
-    Scalar lower_white(0, 0, 200);     // H不限，S低（饱和度低），V高（明度高）
+    Scalar lower_white(0, 0, 200);
     Scalar upper_white(179, 30, 255);
     inRange(hsv, lower_white, upper_white, mask);
 
-    // 反转掩码：白色背景变黑，产品变白
     bitwise_not(mask, mask);
 
-    // 增强的形态学操作来过滤噪点
+    // 形态学操作:开运算去噪 + 闭运算填充空洞
     Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
-
-    // 先开运算去除小噪点
     morphologyEx(mask, mask, MORPH_OPEN, kernel, Point(-1,-1), 2);
-    // 再闭运算填充产品内部空洞
     morphologyEx(mask, mask, MORPH_CLOSE, kernel);
 
     // 查找轮廓
@@ -142,26 +125,15 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
         Point2f vertices[4];
         rect.points(vertices);
 
-        // 计算轮廓逼近 (使用0.03容差,平衡精度和鲁棒性)
         vector<Point> approx;
         approxPolyDP(contour, approx, arcLength(contour, true) * 0.03, true);
 
-        // 判断形状: 只有矩形是合格品
-        // 严格判断: 4个顶点 + 面积与最小外接矩形面积接近
         float width = rect.size.width;
         float height = rect.size.height;
-        float rect_area = width * height;
-        float area_ratio = area / rect_area;  // 轮廓面积 / 外接矩形面积
+        float area_ratio = area / (width * height);
 
-        bool is_rectangular = false;
-        // 矩形必须满足：
-        // 1. 顶点数为4
-        // 2. 填充度 > 0.80（矩形接近1.0，圆形约0.785，三角形约0.5）
-        // 注意：使用0.80而不是0.85，因为旋转的矩形填充度可能略低
-        int vertices_count = approx.size();
-        if (vertices_count == 4 && area_ratio > 0.80) {
-            is_rectangular = true;
-        }
+        // 矩形判定:4顶点 + 填充度>0.80
+        bool is_rectangular = (approx.size() == 4 && area_ratio > 0.80);
 
         Detection det;
         det.centroid = rect.center;
@@ -169,8 +141,7 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
         det.box = vector<Point>(vertices, vertices + 4);
 
         if (is_rectangular) {
-            det.type = "qualified";  // 矩形 = 合格品
-            // 矩形的角度：计算相对于正置（长边水平）的旋转角度
+            det.type = "qualified";
             det.angle = calculateRectangleAngle(rect);
 
             // 初始化缩放基准（使用首个合格品的长边尺寸）
@@ -182,20 +153,13 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
             }
             det.scale = current_size / reference_size;
         } else {
-            det.type = "defective";  // 其他形状(三角形/圆形/多边形) = 次品
-            // 次品的角度：直接使用minAreaRect的角度（同一视频内相对正确即可）
+            det.type = "defective";
             det.angle = rect.angle;
-            // 归一化到 [0, 360)
             while (det.angle < 0) det.angle += 360.0f;
             while (det.angle >= 360.0f) det.angle -= 360.0f;
 
-            // 次品的缩放：使用最大边长相对于基准（如果基准已初始化）
             float current_size = max(width, height);
-            if (reference_initialized) {
-                det.scale = current_size / reference_size;
-            } else {
-                det.scale = 1.0f;  // 基准未初始化时暂定为1.0
-            }
+            det.scale = reference_initialized ? (current_size / reference_size) : 1.0f;
         }
 
         detections.push_back(det);
@@ -233,9 +197,6 @@ void ConveyorInspector::updateCounts(const vector<Detection>& detections,
         } else {
             direction = (dy > 0) ? "↓" : "↑";
         }
-
-        // 满足追踪帧数和移动距离要求，就计数（不再依赖固定计数线）
-        bool should_count = true;
 
         // 找到对应的检测结果
         for (const auto& det : detections) {
@@ -329,7 +290,6 @@ Mat ConveyorInspector::drawDetections(const Mat& frame, const vector<Detection>&
         }
     }
 
-    // 顶部信息栏背景（加高以容纳更多信息）
     rectangle(result, Point(0, 0), Point(result.cols, 70), Scalar(0, 0, 0), -1);
 
     // 第1行：统计信息
@@ -371,9 +331,11 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
 
     if (show_video) {
         cout << "实时显示模式已启用" << endl;
-        cout << "播放控制: ESC/q-退出, 空格-暂停/继续" << endl;
+        cout << "播放控制: ESC/q-退出, 空格-暂停/继续, 右方向键-加速" << endl;
         cout << "如果窗口无法显示，将自动切换到视频文件输出模式" << endl;
     }
+
+    bool speed_boost = false;
 
     Mat frame;
     while (cap.read(frame)) {
@@ -398,10 +360,18 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
         if (gui_available || use_video_output) {
             Mat result = drawDetections(frame, detections, tracked);
 
+            if (speed_boost && gui_available) {
+                string speed_hint = ">> FAST FORWARD (Press Right Arrow to Normal) <<";
+                putText(result, speed_hint, Point(result.cols - 600, result.rows - 20),
+                       FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 255, 255), 2);  // 黄色提示
+            }
+
             if (gui_available && !use_video_output) {
                 try {
                     imshow("Product Inspection", result);
-                    int key = waitKey(30);  // 30ms延迟，约33fps
+
+                    int delay = speed_boost ? 5 : 30;
+                    int key = waitKeyEx(delay);
 
                     if (key == 27 || key == 'q') {  // ESC或q键退出
                         cout << "\n用户中断播放" << endl;
@@ -420,6 +390,13 @@ void ConveyorInspector::processVideo(const string& video_path, bool show_video) 
                                 cout << "\n用户中断播放" << endl;
                                 goto end_video;  // 跳出外层循环
                             }
+                        }
+                    } else if (key == 2555904 || key == 65363) {
+                        speed_boost = !speed_boost;
+                        if (speed_boost) {
+                            cout << "⏩ 加速播放 (再按右方向键恢复正常)" << endl;
+                        } else {
+                            cout << "▶ 正常播放" << endl;
                         }
                     }
                 } catch (cv::Exception& e) {

@@ -25,7 +25,6 @@ void printUsage(const char* program_name) {
 }
 
 int main(int argc, char** argv) {
-    // 检查参数
     if (argc < 2) {
         printUsage(argv[0]);
         return -1;
@@ -33,9 +32,8 @@ int main(int argc, char** argv) {
 
     string image_path = argv[1];
     string output_path = "";
-    bool multi_mode = true;  // 默认启用多公式模式
+    bool multi_mode = true;
 
-    // 解析选项
     for (int i = 2; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--output" && i + 1 < argc) {
@@ -46,17 +44,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 读取图像
     Mat image = imread(image_path);
     if (image.empty()) {
         cerr << "错误: 无法读取图像: " << image_path << endl;
         return -1;
     }
 
-    // 创建识别器
     FormulaRecognizer recognizer;
-
-    // 默认生成输出图片路径
     if (output_path.empty()) {
         // 自动生成输出文件名: 原文件名_result.png
         size_t lastSlash = image_path.find_last_of("/\\");
