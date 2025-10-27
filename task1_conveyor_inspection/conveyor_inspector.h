@@ -57,7 +57,6 @@ public:
 // 流水线检测器类
 class ConveyorInspector {
 private:
-    bool save_frames;
     int frame_count;
     int qualified_count;
     int defective_count;
@@ -76,7 +75,7 @@ private:
     float calculateRectangleAngle(const RotatedRect& rect);  // 计算矩形正置角度
 
 public:
-    ConveyorInspector(bool save_frames = false);
+    ConveyorInspector();
     void processVideo(const string& video_path, bool show_video = false);
     void printStatistics(const string& video_path);
 };

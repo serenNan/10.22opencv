@@ -14,13 +14,11 @@ void printUsage(const char* program_name) {
     cout << "用法: " << program_name << " <图像路径> [选项]" << endl;
     cout << endl;
     cout << "选项:" << endl;
-    cout << "  --debug         启用调试输出,显示识别细节" << endl;
     cout << "  --output <路径>  将结果写入图片并保存" << endl;
     cout << "  --single        强制单公式识别模式(默认自动检测多公式)" << endl;
     cout << endl;
     cout << "示例:" << endl;
     cout << "  " << program_name << " images/formula.png" << endl;
-    cout << "  " << program_name << " images/formula.png --debug" << endl;
     cout << "  " << program_name << " images/formula.png --output result.png" << endl;
     cout << "  " << program_name << " images/formula.png --single  # 强制单公式模式" << endl;
     cout << endl;
@@ -34,21 +32,16 @@ int main(int argc, char** argv) {
     }
 
     string image_path = argv[1];
-    bool debug = false;
     string output_path = "";
     bool multi_mode = true;  // 默认启用多公式模式
-    bool force_single = false;  // 强制单公式模式
 
     // 解析选项
     for (int i = 2; i < argc; i++) {
         string arg = argv[i];
-        if (arg == "--debug") {
-            debug = true;
-        } else if (arg == "--output" && i + 1 < argc) {
+        if (arg == "--output" && i + 1 < argc) {
             output_path = argv[i + 1];
             i++;  // 跳过下一个参数
         } else if (arg == "--single") {
-            force_single = true;
             multi_mode = false;
         }
     }
@@ -61,7 +54,7 @@ int main(int argc, char** argv) {
     }
 
     // 创建识别器
-    FormulaRecognizer recognizer(debug);
+    FormulaRecognizer recognizer;
 
     // 默认生成输出图片路径
     if (output_path.empty()) {

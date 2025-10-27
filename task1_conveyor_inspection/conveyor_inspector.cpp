@@ -74,9 +74,8 @@ vector<TrackedProduct>& ProductTracker::update(const vector<Point2f>& centroids)
 // ConveyorInspector 类实现
 // ============================================================================
 
-ConveyorInspector::ConveyorInspector(bool save_frames)
-    : save_frames(save_frames), frame_count(0),
-      qualified_count(0), defective_count(0),
+ConveyorInspector::ConveyorInspector()
+    : frame_count(0), qualified_count(0), defective_count(0),
       counting_line_x(0), reference_size(0.0f),
       reference_initialized(false) {}
 
@@ -199,12 +198,6 @@ vector<Detection> ConveyorInspector::detectProducts(const Mat& frame) {
                 det.scale = 1.0f;  // 基准未初始化时暂定为1.0
             }
         }
-
-        // * 调试: 显示详细信息
-        cout << "  [Frame " << frame_count << "] vertices=" << approx.size()
-             << ", area=" << fixed << setprecision(0) << area
-             << ", fill=" << setprecision(2) << area_ratio
-             << ", type=" << det.type << endl;
 
         detections.push_back(det);
     }

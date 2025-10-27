@@ -36,7 +36,6 @@ struct FormulaResult {
 // 公式识别器类
 class FormulaRecognizer {
 private:
-    bool debug;
     Rect equalsSignBox;  // 保存等号的位置
 
     // 私有方法
@@ -47,7 +46,7 @@ private:
     vector<Rect> detectFormulaRows(const Mat& binary);
 
 public:
-    FormulaRecognizer(bool enableDebug = false);
+    FormulaRecognizer();
     pair<string, double> recognizeFormula(const Mat& image);
     vector<FormulaResult> recognizeMultipleFormulas(const Mat& image);
 

@@ -26,8 +26,7 @@ bool RecognizedChar::operator<(const RecognizedChar& other) const {
 // FormulaRecognizer 类实现
 // ============================================================================
 
-FormulaRecognizer::FormulaRecognizer(bool enableDebug)
-    : debug(enableDebug) {}
+FormulaRecognizer::FormulaRecognizer() {}
 
 Mat FormulaRecognizer::preprocessImage(const Mat& input) {
     Mat gray, binary;
@@ -45,10 +44,6 @@ Mat FormulaRecognizer::preprocessImage(const Mat& input) {
     // 去噪
     Mat kernel = getStructuringElement(MORPH_RECT, Size(2, 2));
     morphologyEx(binary, binary, MORPH_CLOSE, kernel);
-
-    if (debug) {
-        imwrite("debug_binary.png", binary);
-    }
 
     return binary;
 }
@@ -211,13 +206,6 @@ char FormulaRecognizer::recognizeCharacter(const Mat& roi, const Rect& box) {
         else result = '3';
     }
 
-    if (debug) {
-        cout << "      [" << result << "] 位置(" << box.x << "," << box.y << ") "
-             << w << "x" << h << " AR:" << fixed << setprecision(2) << aspectRatio
-             << " D:" << density << " H:" << numHoles
-             << " TMB:" << topRatio << ":" << midRatio << ":" << botRatio << endl;
-    }
-
     return result;
 }
 
@@ -241,14 +229,6 @@ vector<RecognizedChar> FormulaRecognizer::detectCharacters(const Mat& binary) {
     // 按x坐标排序
     sort(boxes.begin(), boxes.end(),
          [](const Rect& a, const Rect& b) { return a.x < b.x; });
-
-    if (debug) {
-        cout << "  [调试] 检测到 " << boxes.size() << " 个原始边界框:" << endl;
-        for (size_t i = 0; i < boxes.size(); i++) {
-            cout << "    Box " << i << ": (" << boxes[i].x << "," << boxes[i].y
-                 << ") " << boxes[i].width << "x" << boxes[i].height << endl;
-        }
-    }
 
     // 合并等号的两条横线 和 除号(÷)的三个部分
     vector<Rect> mergedBoxes;
@@ -332,9 +312,6 @@ vector<RecognizedChar> FormulaRecognizer::detectCharacters(const Mat& binary) {
 
             // 遇到等号就停止识别后续字符
             if (recognized == '=') {
-                if (debug) {
-                    cout << "  [调试] 检测到等号,停止识别后续字符" << endl;
-                }
                 break;
             }
         }
@@ -510,12 +487,6 @@ pair<string, double> FormulaRecognizer::recognizeFormula(const Mat& image) {
         if (ch.character == '=') {
             equalsSignBox = ch.boundingBox;
         }
-        if (debug) {
-            cout << "  字符: " << ch.character
-                 << " 位置: (" << ch.boundingBox.x << ", " << ch.boundingBox.y << ")"
-                 << " 大小: " << ch.boundingBox.width << "x" << ch.boundingBox.height
-                 << endl;
-        }
     }
 
     cout << "识别的字符序列: " << expression << endl;
@@ -587,11 +558,6 @@ void FormulaRecognizer::writeResultToImage(const Mat& image, const string& formu
 
     // 保存图片
     imwrite(outputPath, outputImage);
-
-    if (debug) {
-        cout << "结果已写入图片: " << outputPath << endl;
-        cout << "结果文字: " << resultText << " 位置: (" << textX << ", " << textY << ")" << endl;
-    }
 }
 
 // 检测多个公式行
@@ -606,10 +572,6 @@ vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
                 horizontalProjection[y]++;
             }
         }
-    }
-
-    if (debug) {
-        cout << "  [调试] 水平投影计算完成" << endl;
     }
 
     // 找到公式行：连续的非零投影区域
@@ -632,10 +594,6 @@ vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
                 // 只有当公式行高度足够时才认为是有效的公式
                 if (endY - startY > 10) {
                     rowRects.push_back(Rect(0, startY, binary.cols, endY - startY + 1));
-                    if (debug) {
-                        cout << "  [调试] 检测到公式行: y=" << startY << " 到 " << endY
-                             << " 高度=" << (endY - startY + 1) << endl;
-                    }
                 }
                 inFormula = false;
             }
@@ -647,15 +605,7 @@ vector<Rect> FormulaRecognizer::detectFormulaRows(const Mat& binary) {
         int endY = binary.rows - 1;
         if (endY - startY > 10) {
             rowRects.push_back(Rect(0, startY, binary.cols, endY - startY + 1));
-            if (debug) {
-                cout << "  [调试] 检测到公式行(底部): y=" << startY << " 到 " << endY
-                     << " 高度=" << (endY - startY + 1) << endl;
-            }
         }
-    }
-
-    if (debug) {
-        cout << "  [调试] 总共检测到 " << rowRects.size() << " 个公式行" << endl;
     }
 
     return rowRects;
@@ -782,11 +732,6 @@ void FormulaRecognizer::writeMultipleResultsToImage(const Mat& image,
         // 在图片上绘制结果文字
         putText(outputImage, resultText, textOrg, fontFace, fontScale,
                 textColor, thickness, LINE_AA);
-
-        if (debug) {
-            cout << "公式 \"" << formulaResult.expression << "\" 结果: " << resultText
-                 << " 位置: (" << textX << ", " << textY << ")" << endl;
-        }
     }
 
     // 保存图片
